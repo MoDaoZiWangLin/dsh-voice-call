@@ -93,10 +93,9 @@ window.__ModuleLoader__.load({
 
     // ---- audio plumbing -------------------------------------------------
     var audioCtx = null;
-    var masterGain = null;
     var playQueue = [];
     var playing = false;
-    var currentSrc = null;
+    var currentAudio = null;
 
     var mic = {
       stream: null,
@@ -205,54 +204,69 @@ window.__ModuleLoader__.load({
     }
 
     // ---- audio output ---------------------------------------------------
+    // Playback uses plain HTMLAudioElement with mp3 blob URLs: Electron's
+    // WebAudio decodeAudioData can fail on mp3 in some builds, while
+    // HTMLAudioElement plays mp3 natively and starts faster.
     function ensureAudio() {
       if (!audioCtx) {
         var AC = window.AudioContext || window.webkitAudioContext;
-        audioCtx = new AC();
-        masterGain = audioCtx.createGain();
-        masterGain.connect(audioCtx.destination);
+        audioCtx = new AC(); // kept for mic capture (ScriptProcessor)
       }
       if (audioCtx.state === "suspended") void audioCtx.resume();
     }
     function setMuted(m) {
-      if (!masterGain || !audioCtx) return;
-      try {
-        masterGain.gain.setTargetAtTime(m ? 0 : 1, audioCtx.currentTime, 0.01);
-      } catch (e) {
-        masterGain.gain.value = m ? 0 : 1;
+      if (currentAudio) {
+        try { currentAudio.volume = m ? 0 : 1; } catch (e) {}
       }
     }
     function enqueueAudio(b64) {
       try {
         var u8 = b64ToU8(b64);
-        audioCtx.decodeAudioData(u8.buffer).then(function (buf) {
-          if (!store.open) return;
-          playQueue.push(buf);
+        diag({ ev: "audioRecv", bytes: u8.length });
+        if (!store.open) return;
+        var url = URL.createObjectURL(new Blob([u8], { type: "audio/mpeg" }));
+        var a = new Audio();
+        a.src = url;
+        a.onended = function () {
+          URL.revokeObjectURL(url);
+          if (currentAudio === a) currentAudio = null;
+          playing = false;
           pump();
-        }).catch(function () {});
-      } catch (e) {}
+        };
+        a.onerror = function () {
+          URL.revokeObjectURL(url);
+          diag({ ev: "audioErr", bytes: u8.length });
+          if (currentAudio === a) currentAudio = null;
+          playing = false;
+          pump();
+        };
+        playQueue.push(a);
+        pump();
+      } catch (e) {
+        diag({ ev: "audioErr", msg: String(e) });
+      }
     }
     function pump() {
-      if (playing || playQueue.length === 0 || !audioCtx) return;
-      var buf = playQueue.shift();
-      var src = audioCtx.createBufferSource();
-      src.buffer = buf;
-      src.connect(masterGain);
-      currentSrc = src;
+      if (playing || playQueue.length === 0) return;
+      var a = playQueue.shift();
+      currentAudio = a;
       playing = true;
-      src.onended = function () {
-        if (currentSrc === src) currentSrc = null;
-        playing = false;
-        pump();
-      };
-      src.start();
+      try { a.volume = store.muted ? 0 : 1; } catch (e) {}
+      var p = a.play();
+      if (p && typeof p.then === "function") {
+        p.then(function () { diag({ ev: "play" }); }).catch(function (err) {
+          diag({ ev: "audioErr", play: String(err && err.message || err) });
+          playing = false;
+          pump();
+        });
+      }
     }
     function stopPlayback() {
       playing = false;
       playQueue = [];
-      if (currentSrc) {
-        try { currentSrc.stop(); } catch (e) {}
-        currentSrc = null;
+      if (currentAudio) {
+        try { currentAudio.pause(); } catch (e) {}
+        currentAudio = null;
       }
     }
 
@@ -529,7 +543,6 @@ window.__ModuleLoader__.load({
         if (audioCtx) {
           try { audioCtx.close(); } catch (e) {}
           audioCtx = null;
-          masterGain = null;
         }
       }, 300);
     }

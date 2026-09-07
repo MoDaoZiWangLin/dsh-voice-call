@@ -49,5 +49,8 @@
 - VAD 再校准：说话阈值 `0.004 → 0.015`、静音下限 `0.002 → 0.008`（桌面环境底噪实测
   在 0.004~0.01，0.004 会频繁误触发）；barge-in 改为需要连续 300ms 语音才打断，
   环境噪声不再可能中断大黑鲸的回答。
+- 语音播放改走原生路径：WebAudio `decodeAudioData` 在部分 Electron 构建无法解码 mp3
+  （有回复但无声），改为 **HTMLAudioElement + mp3 blob URL**（Chromium 原生支持、启动更快），
+  静音/打断/队列逻辑同步迁移；host 侧 TTS 增加按句字节数上报，便于诊断。
 
 [1.0.0]: https://github.com/MoDaoZiWangLin/dsh-voice-call/releases/tag/v1.0.0

@@ -420,14 +420,18 @@ class VoiceService {
       });
       if (!res.ok || !res.body) throw new Error("TTS " + res.status);
       const reader = res.body.getReader();
+      let bytes = 0;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         if (this.active?.ttsController.signal.aborted) break;
+        bytes += value.length;
         sse({ type: "audio", b64: Buffer.from(value).toString("base64") });
       }
+      this.pushDiag({ side: "host", ev: "ttsSentence", chars: sentence.length, bytes });
     } catch (error) {
       if (error?.name !== "AbortError") {
+        this.pushDiag({ side: "host", ev: "ttsError", message: String(error?.message ?? error) });
         sse({ type: "warn", message: "语音合成失败：" + (error?.message ?? error) });
       }
     }
