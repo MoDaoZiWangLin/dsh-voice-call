@@ -42,7 +42,7 @@ const fakeCtx = {
 
 await plugin.apply(fakeCtx, {});
 
-const expect = ["/api/dsh-voice/status", "/api/dsh-voice/talk", "/api/dsh-voice/interrupt", "/api/dsh-voice/reset"];
+const expect = ["/api/dsh-voice/status", "/api/dsh-voice/talk", "/api/dsh-voice/interrupt", "/api/dsh-voice/reset", "/api/dsh-voice/diag"];
 const got = registered.map((r) => r.path);
 for (const path of expect) {
   if (!got.includes(path)) throw new Error(`smoke: route ${path} not registered`);

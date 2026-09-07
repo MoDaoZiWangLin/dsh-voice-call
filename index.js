@@ -7,6 +7,7 @@
 
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { appendFileSync, statSync, truncateSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
@@ -16,6 +17,9 @@ const PLUGIN_NAME = "dsh-voice-call";
 const API_PREFIX = "/api/dsh-voice";
 const HEALTH_TIMEOUT_MS = 25000;
 const MODEL_NAME = "sherpa-onnx-zipformer-zh-en-2023-11-22";
+/** Client telemetry is also mirrored to this file so debugging needs no HTTP access. */
+const DIAG_FILE = join(homedir(), ".dsh", "plugins", PLUGIN_NAME, "diag.log");
+const DIAG_FILE_MAX = 512 * 1024;
 
 /**
  * The host bundle can be loaded from several locations depending on how DSH
@@ -172,6 +176,19 @@ class VoiceService {
     this.engineError = undefined;
     this.history = [];
     this.active = undefined; // { controller, ttsController }
+    this.diag = []; // client telemetry ring buffer (newest last)
+  }
+
+  pushDiag(entry) {
+    this.diag.push(entry);
+    if (this.diag.length > 400) this.diag.splice(0, this.diag.length - 400);
+    try {
+      try {
+        const st = statSync(DIAG_FILE);
+        if (st.size > DIAG_FILE_MAX) truncateSync(DIAG_FILE, 0);
+      } catch {}
+      appendFileSync(DIAG_FILE, JSON.stringify(entry) + "\n");
+    } catch {}
   }
 
   // ---- engine lifecycle -------------------------------------------------
@@ -519,6 +536,34 @@ export async function apply(ctx, config = {}) {
         if (!guard(req, res)) return;
         service.reset();
         writeJson(res, 200, { ok: true });
+      },
+    },
+    {
+      kind: "exact",
+      path: API_PREFIX + "/diag",
+      handler: async (req, res) => {
+        if (req.method === "POST") {
+          if (!guard(req, res)) return;
+          let raw;
+          try {
+            raw = await readBody(req, 64 * 1024);
+          } catch {
+            return writeJson(res, 413, { ok: false, error: "body-too-large" });
+          }
+          let entry;
+          try {
+            entry = JSON.parse(raw.toString("utf8"));
+          } catch {
+            return writeJson(res, 400, { ok: false, error: "invalid-json" });
+          }
+          service.pushDiag(entry);
+          return writeJson(res, 200, { ok: true });
+        }
+        if (req.method === "GET") {
+          if (!guard(req, res)) return;
+          return writeJson(res, 200, { ok: true, count: service.diag.length, entries: service.diag });
+        }
+        return writeJson(res, 405, { ok: false, error: "method-not-allowed" });
       },
     },
   ];

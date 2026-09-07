@@ -62,6 +62,33 @@ window.__ModuleLoader__.load({
       return store;
     }
 
+    // ---- config ---------------------------------------------------------
+    var API = "/api/dsh-voice";
+    var CLIENT_VERSION = "1.0.1-diag"; // bumped so logs reveal stale cached bundles
+    // VAD tuning: speech threshold is deliberately low (0.004) so normal speech
+    // with a quiet mic still triggers; a run of SPEECH_HITS consecutive loud
+    // chunks starts recording to reject single-chunk noise. Silence ends an
+    // utterance at a lower floor to avoid clipping soft speech tails.
+    var SPEECH_RMS = 0.004;
+    var SILENCE_RMS = 0.002;
+    var SPEECH_HITS = 2;
+    var SILENCE_MS = 800;
+    var MAX_UTTER_MS = 12000;
+    var CHUNK_SAMPLES = 1600; // 100 ms @ 16 kHz
+    var MIN_UTTER_SAMPLES = 480; // 30 ms
+
+    /** Best-effort telemetry to the host (never blocks the audio path). */
+    function diag(payload) {
+      try {
+        fetch(API + "/diag", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(Object.assign({ v: CLIENT_VERSION, t: Date.now() }, payload)),
+          keepalive: true,
+        }).catch(function () {});
+      } catch (e) {}
+    }
+
     // ---- audio plumbing -------------------------------------------------
     var audioCtx = null;
     var masterGain = null;
@@ -83,7 +110,9 @@ window.__ModuleLoader__.load({
       rem: 0,
       hits: 0, // consecutive loud chunks (noise gate)
       lastRms: 0, // live diagnostic value shown in the overlay
+      lastProcAt: 0, // last time onaudioprocess fired (proves audio clock is running)
     };
+    var heartbeatId = 0;
     var talkAbort = null;
     var overlayHost = null;
     var overlayRoot = null;
@@ -307,6 +336,7 @@ window.__ModuleLoader__.load({
         mic.analyser.fftSize = 256;
         mic.proc = audioCtx.createScriptProcessor(4096, 1, 1);
         mic.proc.onaudioprocess = function (e) {
+          mic.lastProcAt = Date.now();
           // autoplay-policy safety: if the context ever suspends, pull it back up
           if (audioCtx.state === "suspended") void audioCtx.resume();
           var down = downsample(e.inputBuffer.getChannelData(0));
@@ -322,8 +352,11 @@ window.__ModuleLoader__.load({
         mic.proc.connect(mic.analyser);
         mic.hits = 0;
         mic.lastRms = 0;
+        mic.lastProcAt = 0;
+        diag({ ev: "mic", ok: true, sampleRate: audioCtx.sampleRate, ctxState: audioCtx.state });
         return true;
       }).catch(function (err) {
+        diag({ ev: "mic", ok: false, name: err && err.name, message: err && err.message });
         setStore({ status: "error", error: micErrorText(err) });
         return false;
       });
@@ -353,6 +386,7 @@ window.__ModuleLoader__.load({
     function startTalk(wav) {
       if (store.status === "speaking" || store.status === "thinking") return;
       setStore({ status: "thinking", error: null });
+      diag({ ev: "talk", bytes: wav.length, rmsAtSend: mic.lastRms });
       if (talkAbort) { try { talkAbort.abort(); } catch (e) {} }
       var ac = new AbortController();
       talkAbort = ac;
@@ -364,6 +398,7 @@ window.__ModuleLoader__.load({
       }).then(function (res) {
         if (!res.ok || !res.body) {
           res.text().then(function (t) {
+            diag({ ev: "talkHttp", status: res.status, body: (t || "").slice(0, 120) });
             setStore({ status: "error", error: "语音通道异常 (" + res.status + ")" + (t && t.length < 200 ? " " + t : "") });
           }).catch(function () {
             setStore({ status: "error", error: "语音通道异常 (" + res.status + ")" });
@@ -373,6 +408,7 @@ window.__ModuleLoader__.load({
         return readSse(res.body);
       }).catch(function (err) {
         if (err && err.name === "AbortError") return;
+        diag({ ev: "talkFail", name: err && err.name, message: err && err.message });
         setStore({ status: "error", error: "通话异常：" + ((err && err.message) || err) });
       }).then(function () {
         if (talkAbort === ac) talkAbort = null;
@@ -416,6 +452,7 @@ window.__ModuleLoader__.load({
           break;
         case "done":
           setStore({ status: "listening" });
+          diag({ ev: "talkDone" });
           break;
         case "interrupted":
           stopPlayback();
@@ -423,6 +460,7 @@ window.__ModuleLoader__.load({
           break;
         case "error":
           stopPlayback();
+          diag({ ev: "talkError", message: ev.message });
           setStore({ status: "error", error: ev.message || "出错了" });
           break;
         case "warn":
@@ -439,7 +477,10 @@ window.__ModuleLoader__.load({
     function openCall() {
       if (store.open) return;
       ensureAudio();
+      // resume synchronously inside the user-gesture (click) path
+      if (audioCtx.state === "suspended") void audioCtx.resume();
       setStore({ open: true, status: "connecting", error: null, lastUser: "", assistant: "", muted: false });
+      diag({ ev: "open", ctxState: audioCtx.state, sampleRate: audioCtx.sampleRate });
       fetch(API + "/status", { cache: "no-store" })
         .then(function (r) { return r.json(); })
         .then(function (s) {
@@ -449,14 +490,31 @@ window.__ModuleLoader__.load({
       startMic().then(function (ok) {
         if (ok) setStore({ status: "listening" });
       });
+      // heartbeat snapshot so the host can tell what the mic is doing even if VAD never fires
+      clearInterval(heartbeatId);
+      heartbeatId = setInterval(function () {
+        diag({
+          ev: "snap",
+          status: store.status,
+          rms: mic.lastRms,
+          ctxState: audioCtx ? audioCtx.state : "none",
+          stream: !!mic.stream,
+          lastProcMs: mic.lastProcAt ? Date.now() - mic.lastProcAt : -1,
+          muted: store.muted,
+          open: store.open,
+        });
+      }, 2000);
     }
     function closeCall() {
+      clearInterval(heartbeatId);
+      heartbeatId = 0;
       stopPlayback();
       stopMic();
       if (talkAbort) { try { talkAbort.abort(); } catch (e) {} talkAbort = null; }
       fetch(API + "/interrupt", { method: "POST" }).catch(function () {});
       fetch(API + "/reset", { method: "POST" }).catch(function () {});
       setStore({ open: false, status: "idle", error: null, lastUser: "", assistant: "" });
+      diag({ ev: "close" });
       setTimeout(function () {
         if (audioCtx) {
           try { audioCtx.close(); } catch (e) {}
@@ -626,6 +684,7 @@ window.__ModuleLoader__.load({
 
     function apply(ctx) {
       ensureStyle();
+      diag({ ev: "ready" });
       setTimeout(ensureOverlay, 0);
       ctx.slots.inject("conversation.input.dock", function () {
         return ctx.slots.register({
