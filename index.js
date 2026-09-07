@@ -47,9 +47,12 @@ function resolveAsset(rel) {
 }
 
 const PYTHON = resolveAsset(join("engine", ".venv", "Scripts", "python.exe"));
-const SERVER = resolveAsset(join("engine", "server.py"));
+// server.py must always come from the SAME root as the venv (the source
+// install under ~/.dsh/plugins), never a possibly-stale node_modules copy.
+const ENGINE_ROOT = dirname(dirname(dirname(PYTHON))); // <root>/engine/.venv/Scripts/python.exe -> <root>/engine
+const SERVER = join(ENGINE_ROOT, "server.py");
 const MODELS_ROOT = resolveAsset("models");
-const ENGINE_CWD = dirname(SERVER);
+const ENGINE_CWD = ENGINE_ROOT;
 
 export const name = "dsh-voice-call";
 export const inject = ["webServer", "credentials"];

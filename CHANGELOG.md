@@ -43,5 +43,11 @@
   中文准确率大幅提升，支持中/英/日/韩/粤自动检测、标点与数字 ITN（如「9 点」），
   原双语 zipformer 保留为 fallback；引擎按 `models` 根目录自动选择最优模型。
 - 麦克风降采样由抽取式改为线性插值（抗混叠），提升识别精度。
+- 修复引擎加载到过期副本的问题：`engine/server.py` 与 venv 绑定解析（永远来自
+  `~/.dsh/plugins` 源安装目录），不再可能命中 `node_modules` 里的旧副本——
+  旧副本不认识 `DSH_VOICE_MODELS_ROOT`，导致模型加载失败、`ensureEngine` 空等 25 秒。
+- VAD 再校准：说话阈值 `0.004 → 0.015`、静音下限 `0.002 → 0.008`（桌面环境底噪实测
+  在 0.004~0.01，0.004 会频繁误触发）；barge-in 改为需要连续 300ms 语音才打断，
+  环境噪声不再可能中断大黑鲸的回答。
 
 [1.0.0]: https://github.com/MoDaoZiWangLin/dsh-voice-call/releases/tag/v1.0.0

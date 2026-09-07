@@ -65,13 +65,15 @@ window.__ModuleLoader__.load({
     // ---- config ---------------------------------------------------------
     var API = "/api/dsh-voice";
     var CLIENT_VERSION = "1.0.1-diag"; // bumped so logs reveal stale cached bundles
-    // VAD tuning: speech threshold is deliberately low (0.004) so normal speech
-    // with a quiet mic still triggers; a run of SPEECH_HITS consecutive loud
-    // chunks starts recording to reject single-chunk noise. Silence ends an
-    // utterance at a lower floor to avoid clipping soft speech tails.
-    var SPEECH_RMS = 0.004;
-    var SILENCE_RMS = 0.002;
+    // VAD tuning: ambient noise floor measured ~0.004-0.01 on desktop mics, so
+    // SPEECH_RMS sits comfortably above it (0.015) while real speech (0.03+)
+    // still triggers. SILENCE_RMS is a lower floor so soft speech tails are
+    // not cut. Recording starts after 2 consecutive loud chunks; barge-in
+    // needs 3 (300ms) so background noise can never interrupt mid-answer.
+    var SPEECH_RMS = 0.015;
+    var SILENCE_RMS = 0.008;
     var SPEECH_HITS = 2;
+    var BARGE_HITS = 3;
     var SILENCE_MS = 800;
     var MAX_UTTER_MS = 12000;
     var CHUNK_SAMPLES = 1600; // 100 ms @ 16 kHz
@@ -287,16 +289,17 @@ window.__ModuleLoader__.load({
       mic.lastRms = rms;
       var status = store.status;
       if (!mic.recording) {
-        // start recording only after SPEECH_HITS consecutive loud chunks
+        // start recording after SPEECH_HITS consecutive loud chunks
         // (rejects single-chunk noise pops)
         if (rms >= SPEECH_RMS) {
           mic.hits += 1;
+          // barge-in needs BARGE_HITS of continuous speech (300ms), so ambient
+          // noise bursts can never cut her off mid-answer
+          if (mic.hits === BARGE_HITS && (status === "speaking" || status === "thinking")) {
+            bargeIn();
+            setStore({ status: "listening" });
+          }
           if (mic.hits >= SPEECH_HITS) {
-            // barge-in while she is speaking / thinking
-            if (status === "speaking" || status === "thinking") {
-              bargeIn();
-              setStore({ status: "listening" });
-            }
             mic.recording = true;
             mic.chunks = [samples];
             mic.silenceMs = 0;
