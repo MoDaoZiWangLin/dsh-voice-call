@@ -349,6 +349,11 @@ class VoiceService {
 
     const buf = sentenceBuffer();
     let reply = "";
+    // Every sentence's TTS runs concurrently with the LLM stream, but the
+    // promises are collected so the turn only finishes once ALL audio has
+    // been pushed — otherwise the finally block aborts in-flight TTS and the
+    // connection closes before any audio frame reaches the browser.
+    const pendingSay = [];
     const say = async (sentence) => {
       reply += sentence;
       if (!this.active || this.active.controller.signal.aborted) return;
@@ -382,11 +387,13 @@ class VoiceService {
           }
           const delta = json?.choices?.[0]?.delta?.content;
           if (typeof delta === "string" && delta) {
-            buf.push(delta, (sentence) => void say(sentence));
+            buf.push(delta, (sentence) => { pendingSay.push(say(sentence)); });
           }
         }
       }
-      buf.flush((sentence) => void say(sentence));
+      buf.flush((sentence) => { pendingSay.push(say(sentence)); });
+      // drain every in-flight TTS before the turn (and the SSE connection) closes
+      await Promise.allSettled(pendingSay);
     } catch (error) {
       if (controller.signal.aborted) {
         sse({ type: "interrupted" });

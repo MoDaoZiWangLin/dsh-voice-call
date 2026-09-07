@@ -64,7 +64,7 @@ window.__ModuleLoader__.load({
 
     // ---- config ---------------------------------------------------------
     var API = "/api/dsh-voice";
-    var CLIENT_VERSION = "1.0.1-diag"; // bumped so logs reveal stale cached bundles
+    var CLIENT_VERSION = "1.0.2"; // bumped so logs reveal stale cached bundles
     // VAD tuning: ambient noise floor measured ~0.004-0.01 on desktop mics, so
     // SPEECH_RMS sits comfortably above it (0.015) while real speech (0.03+)
     // still triggers. SILENCE_RMS is a lower floor so soft speech tails are

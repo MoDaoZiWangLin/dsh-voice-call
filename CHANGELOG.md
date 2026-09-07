@@ -52,5 +52,9 @@
 - 语音播放改走原生路径：WebAudio `decodeAudioData` 在部分 Electron 构建无法解码 mp3
   （有回复但无声），改为 **HTMLAudioElement + mp3 blob URL**（Chromium 原生支持、启动更快），
   静音/打断/队列逻辑同步迁移；host 侧 TTS 增加按句字节数上报，便于诊断。
+- 修复「有字幕但无语音」的并发 bug：TTS 以 fire-and-forget 方式与 LLM 流并行，
+  但 `finally` 会立即 `abort` TTS 并关闭 SSE 连接——所有音频帧在发出前就被取消。
+  现在收集每个句子的 TTS promise，在收尾前 `await Promise.allSettled`，确保音频全部
+  推送完成后再发送 `done` 并关闭连接。
 
 [1.0.0]: https://github.com/MoDaoZiWangLin/dsh-voice-call/releases/tag/v1.0.0
