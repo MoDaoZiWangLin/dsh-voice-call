@@ -25,4 +25,9 @@
 - 所有路由仅接受 loopback 回环地址 + 本机 Host + 浏览器同源标记；浏览器端与引擎之间不直接通信，全部经 host 编排。
 - LLM API 密钥通过 DSH `ctx.credentials` 服务解析，插件不落盘、不打印凭据。
 
+### Fixed
+
+- 补上 `dsh.bundle.patch` 清单字段与 `cordis.patch.yml`——缺少它时桌面端启动会报
+  `profile bundle "dsh-voice-call" declares no dsh.bundle in its package.json` 并拒绝加载。
+
 [1.0.0]: https://github.com/MoDaoZiWangLin/dsh-voice-call/releases/tag/v1.0.0
