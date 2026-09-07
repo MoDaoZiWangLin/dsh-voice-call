@@ -444,13 +444,20 @@ class VoiceService {
       });
       if (!res.ok || !res.body) throw new Error("TTS " + res.status);
       const reader = res.body.getReader();
+      // edge-tts streams a CONTINUOUS mp3; it must be assembled whole before the
+      // browser decodes it — pushing raw 720B network chunks as separate "mp3"s
+      // made playback stutter frame-by-frame ("电音").
+      const chunks = [];
       let bytes = 0;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         if (this.active?.ttsController.signal.aborted) break;
+        chunks.push(Buffer.from(value));
         bytes += value.length;
-        sse({ type: "audio", b64: Buffer.from(value).toString("base64") });
+      }
+      if (bytes > 0) {
+        sse({ type: "audio", b64: Buffer.concat(chunks).toString("base64"), final: true });
       }
       this.pushDiag({ side: "host", ev: "ttsSentence", chars: sentence.length, bytes });
     } catch (error) {

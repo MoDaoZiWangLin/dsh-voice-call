@@ -60,5 +60,9 @@
   一段一个音频元素、段间 gap 叠加成卡顿；现在只在句末标点（。！？!?；换行）切句，
   逗号留在句内保持语气连贯，超长句在最近逗号兜底；client 侧 audio 元素加 `preload=auto`
   减小段间启动延迟。
+- 修复「电音/一帧一帧」：edge-tts 输出的是连续编码的 mp3 流，先前把 720B 级别的网络
+  分块逐个当作独立 mp3 播放，解码器只能解出零散帧 → 声音碎裂成帧跳。现在 host 把整句
+  mp3 完整收齐后一次性推送（`final: true`），浏览器整句解码播放。E2E 实测每句 ~30KB
+  完整帧。
 
 [1.0.0]: https://github.com/MoDaoZiWangLin/dsh-voice-call/releases/tag/v1.0.0
