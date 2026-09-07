@@ -1,5 +1,12 @@
 # dsh-voice-call 🐋📞
 
+![version](https://img.shields.io/badge/version-1.0.0-blue)
+![license](https://img.shields.io/badge/license-MIT-green)
+![platform](https://img.shields.io/badge/platform-Windows-4A90D9)
+![STT](https://img.shields.io/badge/STT-sherpa--onnx-8A2BE2)
+![TTS](https://img.shields.io/badge/TTS-edge--tts-FF6B35)
+[![check](https://github.com/MoDaoZiWangLin/dsh-voice-call/actions/workflows/check.yml/badge.svg)](https://github.com/MoDaoZiWangLin/dsh-voice-call/actions/workflows/check.yml)
+
 A **GPT / Doubao-style voice call** plugin for the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH) desktop Web GUI. Press the call button, talk to your whale-girl companion, and hear her answer **out loud** — with streaming playback and barge-in interruption.
 
 ```
@@ -15,6 +22,11 @@ A **GPT / Doubao-style voice call** plugin for the [DeepSeek Harness](https://gi
 - ✋ **Barge-in** — start talking mid-answer and she stops immediately and listens.
 - 🐋 **Same brain as your agent** — calls the same model/provider you already configured (default: volcengine `deepseek-v4-flash`, OpenAI-compatible), wrapped in a whale-girl phone persona.
 - 🎨 **Native-feeling UI** — floating call button above the composer, full-screen call overlay with waveform, live status (listening / thinking / speaking), mute, and hangup.
+
+## Screenshots
+
+> TODO — screenshots of the call button and the call overlay will land here.
+> (Drop images into `docs/screenshots/` and link them from this section.)
 
 ## Requirements
 
@@ -98,6 +110,10 @@ node --check index.js && node --check client.js                # syntax check
 - Client half: `client.js` — `window.__ModuleLoader__` module, UI injected into the `conversation.input.dock` slot; mic capture, VAD, WAV encoding, SSE, WebAudio playback, barge-in.
 - Engine: `engine/server.py` — stdlib HTTP sidecar (`/health`, `/stt`, `/tts`); `engine/requirements.txt`.
 - Docs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/PROGRESS.md](docs/PROGRESS.md).
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

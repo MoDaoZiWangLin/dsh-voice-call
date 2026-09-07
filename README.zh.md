@@ -1,5 +1,12 @@
 # dsh-voice-call 🐋📞
 
+![version](https://img.shields.io/badge/version-1.0.0-blue)
+![license](https://img.shields.io/badge/license-MIT-green)
+![platform](https://img.shields.io/badge/platform-Windows-4A90D9)
+![STT](https://img.shields.io/badge/STT-sherpa--onnx-8A2BE2)
+![TTS](https://img.shields.io/badge/TTS-edge--tts-FF6B35)
+[![check](https://github.com/MoDaoZiWangLin/dsh-voice-call/actions/workflows/check.yml/badge.svg)](https://github.com/MoDaoZiWangLin/dsh-voice-call/actions/workflows/check.yml)
+
 一个给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）桌面 Web GUI 做的 **GPT / 豆包式语音通话** 插件。按下通话键，跟鲸鱼娘大黑鲸说话，她会**开口回答**——流式播放、随时打断。
 
 ```
@@ -15,6 +22,11 @@
 - ✋ **说话打断（barge-in）** — 她正说着，你开口她就停，转头听你说。
 - 🐋 **跟你的 agent 同一个脑子** — 直接调用你已配置的模型/provider（默认火山引擎 `deepseek-v4-flash`，OpenAI 兼容接口），套上鲸鱼娘打电话人设。
 - 🎨 **原生感 UI** — 输入框上方悬浮通话按钮、全屏通话浮层（波形、状态灯：聆听/思考/说话、静音、挂断）。
+
+## 截图
+
+> TODO —— 通话按钮与通话浮层的截图将放这里。
+> （把图片放进 `docs/screenshots/` 并在此节引用。）
 
 ## 环境要求
 
@@ -98,6 +110,10 @@ node --check index.js && node --check client.js                # 语法检查
 - 客户端半区：`client.js` — `window.__ModuleLoader__` 模块，注入 `conversation.input.dock` 槽位；麦克风采集、VAD、WAV 编码、SSE、WebAudio 播放、打断。
 - 引擎：`engine/server.py` — 纯标准库 HTTP 边车（`/health`、`/stt`、`/tts`）；`engine/requirements.txt`。
 - 文档：[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、[docs/PROGRESS.md](docs/PROGRESS.md)。
+
+## 更新日志
+
+见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 许可证
 
