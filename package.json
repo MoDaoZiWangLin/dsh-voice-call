@@ -1,0 +1,45 @@
+{
+  "name": "dsh-voice-call",
+  "version": "1.0.0",
+  "description": "GPT/豆包式语音通话插件 for DeepSeek Harness (DSH) Web GUI：麦克风说话 → 本地 sherpa-onnx 识别 → DeepSeek 流式回答 → edge-tts 语音播放，支持说话打断。Voice call for DSH: local STT + streaming LLM + edge-tts, with barge-in.",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "engine",
+    "scripts",
+    "docs",
+    "README.md",
+    "README.zh.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "check": "node --check index.js && node --check client.js && node --check scripts\\wire-profile.mjs && node --check scripts\\unwire-profile.mjs && python -m py_compile engine\\server.py scripts\\fetch_model.py",
+    "setup": "powershell -ExecutionPolicy Bypass -File scripts\\setup_engine.ps1",
+    "deploy": "powershell -ExecutionPolicy Bypass -File scripts\\install.ps1",
+    "remove": "powershell -ExecutionPolicy Bypass -File scripts\\uninstall.ps1"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dsh": {
+    "id": "dsh-voice-call",
+    "name": "语音通话",
+    "version": "1.0.0",
+    "engines": {
+      "dsh": ">=0.1.2-rc.1"
+    },
+    "permissions": "麦克风采集(浏览器), 本地引擎子进程(sherpa-onnx/edge-tts), 调用已配置的 LLM provider(OpenAI 兼容接口)",
+    "client": {
+      "platform": "web",
+      "immediately": true
+    }
+  },
+  "license": "MIT"
+}

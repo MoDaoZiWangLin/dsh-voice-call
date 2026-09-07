@@ -1,0 +1,15 @@
+# dependencies
+node_modules/
+
+# python engine (created at install time)
+engine/.venv/
+__pycache__/
+*.pyc
+
+# downloaded ASR model (~300 MB, fetched by scripts/fetch_model.py)
+models/
+
+# logs / os noise
+*.log
+.DS_Store
+Thumbs.db

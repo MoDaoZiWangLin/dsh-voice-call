@@ -1,0 +1,4 @@
+# dsh-voice-call engine dependencies (Python 3.10+)
+sherpa-onnx>=1.13
+edge-tts>=7.0
+numpy>=1.26
