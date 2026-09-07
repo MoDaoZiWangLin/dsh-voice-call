@@ -107,7 +107,7 @@ window.__ModuleLoader__.load({
       chunks: [],
       silenceMs: 0,
       totalMs: 0,
-      rem: 0,
+      downPos: 0, // fractional downsample cursor
       hits: 0, // consecutive loud chunks (noise gate)
       lastRms: 0, // live diagnostic value shown in the overlay
       lastProcAt: 0, // last time onaudioprocess fired (proves audio clock is running)
@@ -255,16 +255,23 @@ window.__ModuleLoader__.load({
     }
 
     // ---- mic + VAD ------------------------------------------------------
+    // Linear-interpolation downsample to 16k (anti-aliased, better ASR accuracy
+    // than naive decimation). `mic.downPos` carries the fractional position
+    // across processor callbacks.
     function downsample(input) {
       var step = audioCtx.sampleRate / 16000;
       var out = [];
+      var pos = mic.downPos || 0;
       for (var i = 0; i < input.length; i++) {
-        mic.rem += 1;
-        while (mic.rem >= step) {
-          mic.rem -= step;
-          out.push(input[i]);
+        while (pos <= i) {
+          var i0 = Math.floor(pos);
+          var i1 = Math.min(i0 + 1, input.length - 1);
+          var frac = pos - i0;
+          out.push(input[i0] * (1 - frac) + input[i1] * frac);
+          pos += step;
         }
       }
+      mic.downPos = pos - input.length;
       return out;
     }
     function onChunk(samples) {
@@ -377,7 +384,7 @@ window.__ModuleLoader__.load({
       mic.chunks = [];
       mic.silenceMs = 0;
       mic.totalMs = 0;
-      mic.rem = 0;
+      mic.downPos = 0;
       mic.hits = 0;
       mic.lastRms = 0;
     }

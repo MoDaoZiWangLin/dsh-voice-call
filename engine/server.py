@@ -7,43 +7,66 @@
 #
 # Env:
 #   DSH_VOICE_ENGINE_PORT   default 18765
-#   DSH_VOICE_MODEL_DIR     default <plugin>/models/sherpa-onnx-zipformer-zh-en-2023-11-22
+#   DSH_VOICE_MODELS_ROOT   default <plugin>/models  (engine picks the best model inside)
 #   DSH_VOICE_TTS_VOICE     default zh-CN-XiaoxiaoNeural
 import asyncio, io, json, os, queue, struct, sys, threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-DEFAULT_MODEL = HERE.parent / "models" / "sherpa-onnx-zipformer-zh-en-2023-11-22"
-MODEL_DIR = Path(os.environ.get("DSH_VOICE_MODEL_DIR", DEFAULT_MODEL))
+DEFAULT_MODELS_ROOT = HERE.parent / "models"
+MODELS_ROOT = Path(os.environ.get("DSH_VOICE_MODELS_ROOT", DEFAULT_MODELS_ROOT))
+SENSE_VOICE_DIR = MODELS_ROOT / "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17"
+ZIPFORMER_DIR = MODELS_ROOT / "sherpa-onnx-zipformer-zh-en-2023-11-22"
 PORT = int(os.environ.get("DSH_VOICE_ENGINE_PORT", "18765"))
 DEFAULT_VOICE = os.environ.get("DSH_VOICE_TTS_VOICE", "zh-CN-XiaoxiaoNeural")
 
 recognizer = None
 recognizer_error = None
+active_model = None
 
 
 def load_recognizer():
-    global recognizer, recognizer_error
+    global recognizer, recognizer_error, active_model
     try:
         import sherpa_onnx
     except Exception as e:  # noqa: BLE001
         recognizer_error = f"sherpa_onnx import failed: {e}"
         return
-    encoder = MODEL_DIR / "encoder-epoch-34-avg-19.int8.onnx"
+    # 1) SenseVoice (Chinese-first, punctuation + ITN) — best accuracy
+    sv_model = SENSE_VOICE_DIR / "model.int8.onnx"
+    if not sv_model.exists():
+        sv_model = SENSE_VOICE_DIR / "model.onnx"
+    if sv_model.exists() and (SENSE_VOICE_DIR / "tokens.txt").exists():
+        try:
+            recognizer = sherpa_onnx.OfflineRecognizer.from_sense_voice(
+                model=str(sv_model),
+                tokens=str(SENSE_VOICE_DIR / "tokens.txt"),
+                num_threads=2,
+                sample_rate=16000,
+                use_itn=True,
+            )
+            active_model = "sense-voice"
+            recognizer_error = None
+            return
+        except Exception as e:  # noqa: BLE001
+            recognizer_error = f"sense-voice init failed: {e}"
+            recognizer = None
+    # 2) bilingual zh-en zipformer (fallback)
+    encoder = ZIPFORMER_DIR / "encoder-epoch-34-avg-19.int8.onnx"
     if not encoder.exists():
-        encoder = MODEL_DIR / "encoder-epoch-34-avg-19.onnx"
-    joiner = MODEL_DIR / "joiner-epoch-34-avg-19.int8.onnx"
+        encoder = ZIPFORMER_DIR / "encoder-epoch-34-avg-19.onnx"
+    joiner = ZIPFORMER_DIR / "joiner-epoch-34-avg-19.int8.onnx"
     if not joiner.exists():
-        joiner = MODEL_DIR / "joiner-epoch-34-avg-19.onnx"
-    tokens = MODEL_DIR / "tokens.txt"
-    if not (encoder.exists() and (MODEL_DIR / "decoder-epoch-34-avg-19.onnx").exists() and tokens.exists()):
-        recognizer_error = f"model files missing under {MODEL_DIR}"
+        joiner = ZIPFORMER_DIR / "joiner-epoch-34-avg-19.onnx"
+    tokens = ZIPFORMER_DIR / "tokens.txt"
+    if not (encoder.exists() and (ZIPFORMER_DIR / "decoder-epoch-34-avg-19.onnx").exists() and tokens.exists()):
+        recognizer_error = f"no usable ASR model under {MODELS_ROOT} (need SenseVoice or zipformer zh-en)"
         return
     try:
         recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
             encoder=str(encoder),
-            decoder=str(MODEL_DIR / "decoder-epoch-34-avg-19.onnx"),
+            decoder=str(ZIPFORMER_DIR / "decoder-epoch-34-avg-19.onnx"),
             joiner=str(joiner),
             tokens=str(tokens),
             num_threads=2,
@@ -51,6 +74,7 @@ def load_recognizer():
             feature_dim=80,
             decoding_method="greedy_search",
         )
+        active_model = "zipformer-zh-en"
     except Exception as e:  # noqa: BLE001
         recognizer_error = f"recognizer init failed: {e}"
         return
@@ -186,9 +210,10 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {
                 "ok": recognizer is not None,
                 "asr": "sherpa-onnx" if recognizer is not None else (recognizer_error or "not-ready"),
+                "model": active_model,
                 "tts": "edge-tts",
                 "voice": DEFAULT_VOICE,
-                "model": str(MODEL_DIR),
+                "modelsRoot": str(MODELS_ROOT),
             })
         else:
             self._json(404, {"ok": False, "error": "not found"})

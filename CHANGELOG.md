@@ -37,5 +37,11 @@
 - 修正麦克风 VAD 灵敏度：说话阈值 `0.010 → 0.004`（低增益麦克风也能触发），
   增加连续 2 个分块才开启录音的噪声门（防单次噪声误触发），静音判定用更低下限避免切断软尾音；
   通话浮层新增实时音量诊断条（`🎤 RMS · 状态 · 阈值`），并强化 AudioContext 被挂起时的自动恢复。
+- 修复 LLM 凭据解析：`ctx.credentials.resolve()` 返回的是 `{value, source}` 对象而非字符串，
+  原代码按字符串解包导致恒报「找不到 VOLCENGINE_API_KEY 凭据」——现在正确读取 `result.value`。
+- 识别模型升级为 **SenseVoice**（`sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17`）：
+  中文准确率大幅提升，支持中/英/日/韩/粤自动检测、标点与数字 ITN（如「9 点」），
+  原双语 zipformer 保留为 fallback；引擎按 `models` 根目录自动选择最优模型。
+- 麦克风降采样由抽取式改为线性插值（抗混叠），提升识别精度。
 
 [1.0.0]: https://github.com/MoDaoZiWangLin/dsh-voice-call/releases/tag/v1.0.0

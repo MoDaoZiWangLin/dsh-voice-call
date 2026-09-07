@@ -16,7 +16,6 @@ import { credentialRef } from "@deepseek-ai/dsh-credentials";
 const PLUGIN_NAME = "dsh-voice-call";
 const API_PREFIX = "/api/dsh-voice";
 const HEALTH_TIMEOUT_MS = 25000;
-const MODEL_NAME = "sherpa-onnx-zipformer-zh-en-2023-11-22";
 /** Client telemetry is also mirrored to this file so debugging needs no HTTP access. */
 const DIAG_FILE = join(homedir(), ".dsh", "plugins", PLUGIN_NAME, "diag.log");
 const DIAG_FILE_MAX = 512 * 1024;
@@ -49,7 +48,7 @@ function resolveAsset(rel) {
 
 const PYTHON = resolveAsset(join("engine", ".venv", "Scripts", "python.exe"));
 const SERVER = resolveAsset(join("engine", "server.py"));
-const MODEL_DIR = resolveAsset(join("models", MODEL_NAME));
+const MODELS_ROOT = resolveAsset("models");
 const ENGINE_CWD = dirname(SERVER);
 
 export const name = "dsh-voice-call";
@@ -202,7 +201,7 @@ class VoiceService {
           env: {
             ...process.env,
             DSH_VOICE_ENGINE_PORT: String(this.config.enginePort),
-            DSH_VOICE_MODEL_DIR: MODEL_DIR,
+            DSH_VOICE_MODELS_ROOT: MODELS_ROOT,
           },
           windowsHide: true,
           stdio: ["ignore", "ignore", "pipe"],
@@ -281,9 +280,13 @@ class VoiceService {
   async resolveKey() {
     try {
       const ref = credentialRef(this.config.apiKeyEnv);
-      const value = await this.ctx.credentials.resolve(ref);
-      if (typeof value === "string" && value.length > 0) return value;
-    } catch {}
+      const result = await this.ctx.credentials.resolve(ref);
+      // resolve() -> { value, source } | undefined; never a bare string
+      if (result && typeof result.value === "string" && result.value.length > 0) return result.value;
+      this.ctx.logger?.warn?.("[dsh-voice] credential ref %s resolved empty", this.config.apiKeyEnv);
+    } catch (error) {
+      this.ctx.logger?.warn?.("[dsh-voice] credential resolve failed: " + String(error?.message ?? error));
+    }
     return undefined;
   }
 

@@ -1,4 +1,4 @@
-﻿# dsh-voice-call — install into the DeepSeek Harness desktop app.
+# dsh-voice-call — install into the DeepSeek Harness desktop app.
 # Syncs the repo into ~/.dsh/plugins/dsh-voice-call, sets up the python engine
 # (sherpa-onnx + edge-tts + model, on first run), and wires the plugin into
 # the DSH profile(s). A restart of the app is required for the plugin to load.
@@ -32,8 +32,10 @@ if (-not (Test-Path $py) -or $SetupEngine) {
 } else {
   Write-Host "      engine venv already present (skip; use -SetupEngine to force)"
 }
-$modelDir = Join-Path $target "models\sherpa-onnx-zipformer-zh-en-2023-11-22"
-if (-not (Test-Path (Join-Path $modelDir "tokens.txt")) -or $FetchModel) {
+$senseDir = Join-Path $target "models\sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17"
+$zipDir = Join-Path $target "models\sherpa-onnx-zipformer-zh-en-2023-11-22"
+$hasModel = (Test-Path (Join-Path $senseDir "model.int8.onnx")) -or (Test-Path (Join-Path $zipDir "tokens.txt"))
+if (-not $hasModel -or $FetchModel) {
   & $py (Join-Path $target "scripts\fetch_model.py")
 } else {
   Write-Host "      ASR model already present (skip; use -FetchModel to force)"
