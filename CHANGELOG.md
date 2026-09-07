@@ -56,5 +56,9 @@
   但 `finally` 会立即 `abort` TTS 并关闭 SSE 连接——所有音频帧在发出前就被取消。
   现在收集每个句子的 TTS promise，在收尾前 `await Promise.allSettled`，确保音频全部
   推送完成后再发送 `done` 并关闭连接。
+- 修复播放"一卡一卡"：句切逻辑原先连逗号都切段（出现过 2~3 个字的碎片句），
+  一段一个音频元素、段间 gap 叠加成卡顿；现在只在句末标点（。！？!?；换行）切句，
+  逗号留在句内保持语气连贯，超长句在最近逗号兜底；client 侧 audio 元素加 `preload=auto`
+  减小段间启动延迟。
 
 [1.0.0]: https://github.com/MoDaoZiWangLin/dsh-voice-call/releases/tag/v1.0.0

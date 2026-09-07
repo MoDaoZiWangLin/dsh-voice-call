@@ -226,6 +226,7 @@ window.__ModuleLoader__.load({
         if (!store.open) return;
         var url = URL.createObjectURL(new Blob([u8], { type: "audio/mpeg" }));
         var a = new Audio();
+        a.preload = "auto"; // start buffering immediately -> smaller inter-segment gap
         a.src = url;
         a.onended = function () {
           URL.revokeObjectURL(url);

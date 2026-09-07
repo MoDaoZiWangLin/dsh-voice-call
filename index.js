@@ -142,23 +142,40 @@ async function readBody(req, limit) {
   return Buffer.concat(chunks);
 }
 
-/** Split streaming text into speakable sentences, flushing long runs without punctuation. */
+/**
+ * Split streaming text into speakable sentences. Only sentence-final
+ * punctuation cuts a segment (，、 stay inside the sentence so playback flows
+ * naturally); very long runs without sentence-final punctuation are broken at
+ * the last comma as a fallback so TTS never stalls.
+ */
 function sentenceBuffer() {
   let pending = "";
   return {
     push(delta, emit) {
       pending += delta;
       let idx;
-      while ((idx = pending.search(/[。！？!?\n；;，,]/)) !== -1) {
+      while ((idx = pending.search(/[。！？!?；;\n]/)) !== -1) {
         const head = pending.slice(0, idx + 1).trim();
         pending = pending.slice(idx + 1);
         if (head) emit(head);
       }
-      // flush very long runs so TTS starts even if the model rambles
-      if (pending.length >= 36) {
-        const head = pending.trim();
-        pending = "";
-        if (head) emit(head);
+      // long-run fallback: break at the nearest comma so a rambling reply
+      // still starts talking without fragmenting playback
+      if (pending.length >= 64) {
+        const cut = Math.max(
+          pending.lastIndexOf("，"),
+          pending.lastIndexOf("、"),
+          pending.lastIndexOf(",")
+        );
+        if (cut > 0) {
+          const head = pending.slice(0, cut + 1).trim();
+          pending = pending.slice(cut + 1);
+          if (head) emit(head);
+        } else {
+          const head = pending.trim();
+          pending = "";
+          if (head) emit(head);
+        }
       }
     },
     flush(emit) {
