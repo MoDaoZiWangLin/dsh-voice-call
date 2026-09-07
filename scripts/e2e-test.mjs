@@ -50,5 +50,24 @@ console.log(`audioFrames=${frames.length}  audioBytes=${audioBytes}  done=${!!do
 if (!userEv || !llmEv) { console.error("E2E FAIL: no transcript"); process.exit(1); }
 if (frames.length === 0 || audioBytes < 1000) { console.error("E2E FAIL: no audio frames reached the client path"); process.exit(1); }
 if (errEv) { console.error("E2E FAIL: " + errEv.message); process.exit(1); }
-console.log("E2E PASS");
+
+// order check: every sentence's llm event must be followed by its audio frame
+// BEFORE the next sentence's llm — i.e. audio order == sentence order.
+const llmCount = events.filter((e) => e.type === "llm").length;
+if (frames.length !== llmCount) {
+  console.error(`E2E FAIL: audio frame count (${frames.length}) != sentence count (${llmCount})`);
+  process.exit(1);
+}
+let expectAudio = false;
+for (const e of events) {
+  if (e.type === "llm") {
+    if (expectAudio) { console.error("E2E FAIL: two sentences without an audio frame between them (out of order)"); process.exit(1); }
+    expectAudio = true;
+  } else if (e.type === "audio") {
+    if (!expectAudio) { console.error("E2E FAIL: audio frame before its sentence (out of order)"); process.exit(1); }
+    expectAudio = false;
+  }
+}
+if (expectAudio) { console.error("E2E FAIL: trailing sentence missing its audio frame"); process.exit(1); }
+console.log("E2E PASS (order verified)");
 process.exit(0);

@@ -366,16 +366,22 @@ class VoiceService {
 
     const buf = sentenceBuffer();
     let reply = "";
-    // Every sentence's TTS runs concurrently with the LLM stream, but the
-    // promises are collected so the turn only finishes once ALL audio has
-    // been pushed — otherwise the finally block aborts in-flight TTS and the
-    // connection closes before any audio frame reaches the browser.
-    const pendingSay = [];
+    // Sentences are synthesized through a promise CHAIN (not in parallel):
+    // parallel TTS finished in arbitrary order, so later sentences could be
+    // pushed (and played) before earlier ones ("先说后面的再说前面的").
+    // Chaining keeps synthesis streaming (a sentence starts as soon as it
+    // arrives from the LLM) while strictly preserving playback order. The turn
+    // only finishes once the whole chain drained, so finally never aborts
+    // in-flight TTS before audio reached the browser.
+    let ttsChain = Promise.resolve();
     const say = async (sentence) => {
       reply += sentence;
       if (!this.active || this.active.controller.signal.aborted) return;
       sse({ type: "llm", text: sentence });
       await this.streamTts(sentence, sse);
+    };
+    const enqueueSay = (sentence) => {
+      ttsChain = ttsChain.then(() => say(sentence));
     };
     const ttsController = new AbortController();
     this.active.ttsController = ttsController;
@@ -404,13 +410,14 @@ class VoiceService {
           }
           const delta = json?.choices?.[0]?.delta?.content;
           if (typeof delta === "string" && delta) {
-            buf.push(delta, (sentence) => { pendingSay.push(say(sentence)); });
+            buf.push(delta, enqueueSay);
           }
         }
       }
-      buf.flush((sentence) => { pendingSay.push(say(sentence)); });
-      // drain every in-flight TTS before the turn (and the SSE connection) closes
-      await Promise.allSettled(pendingSay);
+      buf.flush(enqueueSay);
+      // drain the whole ordered TTS chain before the turn (and the SSE
+      // connection) closes
+      await ttsChain;
     } catch (error) {
       if (controller.signal.aborted) {
         sse({ type: "interrupted" });
