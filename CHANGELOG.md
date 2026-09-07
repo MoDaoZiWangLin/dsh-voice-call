@@ -29,5 +29,10 @@
 
 - 补上 `dsh.bundle.patch` 清单字段与 `cordis.patch.yml`——缺少它时桌面端启动会报
   `profile bundle "dsh-voice-call" declares no dsh.bundle in its package.json` 并拒绝加载。
+- 移除普通对象形式的 `Config` 导出——cordis 会把插件的 `Config` 导出当作 Standard Schema
+  调用 `Config["~standard"].validate`，普通对象会抛 `Cannot read properties of undefined (reading 'validate')`
+  并导致插件树加载失败；改为模块私有默认值，schema 化配置留待后续。
+- 新增 `scripts/smoke-load.mjs` 冒烟测试：模拟 cordis 的 `resolveConfig` 分支 + 用最小 ctx
+  真实执行 `apply()`（`npm run smoke`，需在 DSH 环境内运行）。
 
 [1.0.0]: https://github.com/MoDaoZiWangLin/dsh-voice-call/releases/tag/v1.0.0

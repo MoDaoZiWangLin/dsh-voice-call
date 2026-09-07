@@ -51,7 +51,12 @@ const ENGINE_CWD = dirname(SERVER);
 export const name = "dsh-voice-call";
 export const inject = ["webServer", "credentials"];
 
-export const Config = {
+/**
+ * Plugin defaults. NOTE: deliberately NOT exported as `Config` — cordis treats
+ * a plugin's `Config` export as a Standard Schema (`Config["~standard"].validate`)
+ * and crashes on a plain object; schema-based settings can come later.
+ */
+const DEFAULTS = {
   enabled: true,
   enginePort: 18765,
   baseURL: "https://ark.cn-beijing.volces.com/api/plan/v3",
@@ -424,7 +429,7 @@ class VoiceService {
 }
 
 export async function apply(ctx, config = {}) {
-  const cfg = { ...Config, ...config };
+  const cfg = { ...DEFAULTS, ...config };
   if (!cfg.enabled) return;
   const service = new VoiceService(ctx, cfg);
   ctx.effect(() => {

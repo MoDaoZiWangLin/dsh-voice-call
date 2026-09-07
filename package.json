@@ -21,7 +21,8 @@
     "LICENSE"
   ],
   "scripts": {
-    "check": "node --check index.js && node --check client.js && node --check scripts\\wire-profile.mjs && node --check scripts\\unwire-profile.mjs && python -m py_compile engine\\server.py scripts\\fetch_model.py",
+    "check": "node --check index.js && node --check client.js && node --check scripts\\wire-profile.mjs && node --check scripts\\unwire-profile.mjs && node --check scripts\\smoke-load.mjs && python -m py_compile engine\\server.py scripts\\fetch_model.py",
+    "smoke": "node scripts\\smoke-load.mjs",
     "setup": "powershell -ExecutionPolicy Bypass -File scripts\\setup_engine.ps1",
     "deploy": "powershell -ExecutionPolicy Bypass -File scripts\\install.ps1",
     "remove": "powershell -ExecutionPolicy Bypass -File scripts\\uninstall.ps1"
