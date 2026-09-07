@@ -1,12 +1,46 @@
 # dsh-voice-call — DSH 语音通话插件（比肩原生）
 
-状态：v1.0.0 完成（代码/引擎/安装脚本齐备，已接线 desktop profile，待重启验证）
-日期：2026-09-07
+状态：✅ **v1.0.0 全链路打通，公子验收 Perfect（2026-09-08）**。剩余改进留待下次新对话。
+日期：2026-09-07（开发）→ 2026-09-08（验收）
 
-## 目标
-公子要求：DSH 里做 GPT/豆包式语音通话，「比肩原生的效果」。
-- 麦克风说话 → 大黑鲸语音回答（DeepSeek 同款模型 + 鲸鱼娘人设）
-- 低延迟、流式播放、说话打断、状态切换、好看的通话 UI
+## 当前能力（全部实测）
+- 麦克风说话 → SenseVoice 本地识别（中英日韩粤自动检测、标点、数字 ITN）
+- → 火山引擎 deepseek-v4-flash 流式回复（鲸鱼娘人设、滚动历史）
+- → edge-tts 合成（晓晓音色）→ 整句 mp3 一次性推送 → HTMLAudioElement 原生播放
+- 连贯自然、语序正确（TTS promise 链串行保序）、说话打断（300ms 语音）、静音/挂断
+- 黑匣子 diag：client 事件 + host 句级 TTS 字节，落盘 diag.log，排查靠它
+
+## 交付物
+- GitHub：https://github.com/MoDaoZiWangLin/dsh-voice-call （main，tag v1.0.0，Release v1.0.0）
+- 仓库：C:\Users\MrTim\dsh-workspace\dsh-voice-call
+- 运行副本：~/.dsh/plugins/dsh-voice-call（引擎 venv+模型）、profiles/desktop/node_modules/dsh-voice-call
+- 测试：`npm run smoke`（cordis 加载模拟）、`node scripts/e2e-test.mjs`（真实 STT→LLM→TTS→音频+语序断言，需在 DSH 环境跑）
+
+## 改动流程（下次会话照做）
+1. 改代码（仓库）
+2. robocopy 仓库→plugins（XD .git/.venv/models）+ 复制 index.js/client.js/server.py 到 node_modules 副本
+3. `node --check` ×2 + `python -m py_compile` + smoke + e2e
+4. git commit + push（-c http.proxy= -c https.proxy= 直连；Clash 代理常掉）
+5. 重启 DSH（`powershell -File C:\Users\MrTim\dsh-workspace\restart-dsh.ps1`，延迟 15s 自动重启）
+
+## 下次新对话待办（公子确认的改进方向）
+- [ ] 句间平滑衔接（每句播放边界 ~50-100ms gap 微优化，可用 WebAudio 双 buffer 无缝）
+- [ ] 可配置化：schemastery `Config` schema（音色/语速/模型/provider/阈值），接入设置面板
+- [ ] 音色可选：zh-CN-XiaoxiaoNeural 之外加 Yunxi/晓伊 等，或本地 kokoro/piper 离线 TTS
+- [ ] 长回复流式化：当前整句合成完再推，可做"边合成边播+保序"（按句内 mp3 分块带 seq）
+- [ ] barge-in 灵敏度按用户习惯微调（SPEECH_RMS 0.015 / BARGE_HITS 3）
+- [ ] 通话转录/历史导出
+- [ ] README 补截图（docs/screenshots/ 占位已建）
+- [ ] 发 v1.0.1 tag + Release
+
+## 关键坑（务必先读，防重踩）
+- 插件/client 改动**必须重启 DSH 才生效**（无 dev:web 时）；重启后 profile 里 bundle 必须在（wire-profile）
+- node_modules 副本会落后 → host 的 server.py/venv 解析绑定 plugins 源目录（ENGINE_ROOT 推导）
+- `ctx.credentials.resolve(ref)` 返回 `{value, source}` 对象，不是字符串
+- mp3 必须**整句**收齐再播（分块播=电音）；TTS 必须**串行保序**（并行=语序乱）
+- Electron：AudioContext 需手势 resume；播放用 HTMLAudioElement（decodeAudioData 解不了 mp3）
+- Windows PowerShell 5.1 读 .ps1 要 UTF-8 BOM；package.json scripts 不能叫 install（pnpm 11 拦）
+- 运行中 App 锁 node_modules 原生模块 → 运行中 pnpm install 会 EPERM；全量重装等重启后
 
 ## 已实现（全部本地验证过）
 - [x] 引擎：venv 装 sherpa-onnx 1.13.7 + edge-tts 7.2.8 + numpy（Python 3.14 wheel 齐全）
