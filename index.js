@@ -598,3 +598,5 @@ export async function apply(ctx, config = {}) {
     };
   }, "dsh-voice-call: routes");
 }
+
+export { DEFAULTS, VoiceService };
