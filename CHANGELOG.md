@@ -34,5 +34,8 @@
   并导致插件树加载失败；改为模块私有默认值，schema 化配置留待后续。
 - 新增 `scripts/smoke-load.mjs` 冒烟测试：模拟 cordis 的 `resolveConfig` 分支 + 用最小 ctx
   真实执行 `apply()`（`npm run smoke`，需在 DSH 环境内运行）。
+- 修正麦克风 VAD 灵敏度：说话阈值 `0.010 → 0.004`（低增益麦克风也能触发），
+  增加连续 2 个分块才开启录音的噪声门（防单次噪声误触发），静音判定用更低下限避免切断软尾音；
+  通话浮层新增实时音量诊断条（`🎤 RMS · 状态 · 阈值`），并强化 AudioContext 被挂起时的自动恢复。
 
 [1.0.0]: https://github.com/MoDaoZiWangLin/dsh-voice-call/releases/tag/v1.0.0

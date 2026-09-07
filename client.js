@@ -21,7 +21,13 @@ window.__ModuleLoader__.load({
 
     // ---- config ---------------------------------------------------------
     var API = "/api/dsh-voice";
-    var RMS_THRESHOLD = 0.010;
+    // VAD tuning: speech threshold is deliberately low (0.004) so normal speech
+    // with a quiet mic still triggers; a run of SPEECH_HITS consecutive loud
+    // chunks starts recording to reject single-chunk noise. Silence ends an
+    // utterance at a lower floor to avoid clipping soft speech tails.
+    var SPEECH_RMS = 0.004;
+    var SILENCE_RMS = 0.002;
+    var SPEECH_HITS = 2;
     var SILENCE_MS = 800;
     var MAX_UTTER_MS = 12000;
     var CHUNK_SAMPLES = 1600; // 100 ms @ 16 kHz
@@ -75,6 +81,8 @@ window.__ModuleLoader__.load({
       silenceMs: 0,
       totalMs: 0,
       rem: 0,
+      hits: 0, // consecutive loud chunks (noise gate)
+      lastRms: 0, // live diagnostic value shown in the overlay
     };
     var talkAbort = null;
     var overlayHost = null;
@@ -102,6 +110,9 @@ window.__ModuleLoader__.load({
       ".dshvc-status{margin-top:4px;font-size:14px;color:#93c5fd;min-height:20px}",
       ".dshvc-status-err{color:#fca5a5}",
       ".dshvc-wave{width:320px;height:64px;margin:8px auto 2px;display:block}",
+      ".dshvc-meter{margin-top:2px;font-size:11px;color:#7dd3fc;font-variant-numeric:tabular-nums;min-height:16px}",
+      ".dshvc-meter-hot{color:#86efac}",
+      ".dshvc-meter-dim{color:#64748b}",
       ".dshvc-transcript{margin:6px auto 0;max-width:340px;font-size:12px;line-height:1.6;color:#94a3b8;text-align:left}",
       ".dshvc-you{color:#7dd3fc}",
       ".dshvc-her{color:#86efac}",
@@ -233,28 +244,37 @@ window.__ModuleLoader__.load({
         mic.chunks = [];
         mic.silenceMs = 0;
         mic.totalMs = 0;
+        mic.hits = 0;
         return;
       }
       var rms = computeRms(samples);
-      var isSpeech = rms >= RMS_THRESHOLD;
+      mic.lastRms = rms;
       var status = store.status;
       if (!mic.recording) {
-        if (isSpeech) {
-          // barge-in while she is speaking / thinking
-          if (status === "speaking" || status === "thinking") {
-            bargeIn();
-            setStore({ status: "listening" });
+        // start recording only after SPEECH_HITS consecutive loud chunks
+        // (rejects single-chunk noise pops)
+        if (rms >= SPEECH_RMS) {
+          mic.hits += 1;
+          if (mic.hits >= SPEECH_HITS) {
+            // barge-in while she is speaking / thinking
+            if (status === "speaking" || status === "thinking") {
+              bargeIn();
+              setStore({ status: "listening" });
+            }
+            mic.recording = true;
+            mic.chunks = [samples];
+            mic.silenceMs = 0;
+            mic.totalMs = 100;
+            mic.hits = 0;
           }
-          mic.recording = true;
-          mic.chunks = [samples];
-          mic.silenceMs = 0;
-          mic.totalMs = 100;
+        } else {
+          mic.hits = 0;
         }
         return;
       }
       mic.chunks.push(samples);
       mic.totalMs += 100;
-      mic.silenceMs = isSpeech ? 0 : mic.silenceMs + 100;
+      mic.silenceMs = rms >= SILENCE_RMS ? 0 : mic.silenceMs + 100;
       if (mic.silenceMs >= SILENCE_MS || mic.totalMs >= MAX_UTTER_MS) finalizeUtterance();
     }
     function finalizeUtterance() {
@@ -287,6 +307,8 @@ window.__ModuleLoader__.load({
         mic.analyser.fftSize = 256;
         mic.proc = audioCtx.createScriptProcessor(4096, 1, 1);
         mic.proc.onaudioprocess = function (e) {
+          // autoplay-policy safety: if the context ever suspends, pull it back up
+          if (audioCtx.state === "suspended") void audioCtx.resume();
           var down = downsample(e.inputBuffer.getChannelData(0));
           if (down.length) {
             mic.pending.push.apply(mic.pending, down);
@@ -298,6 +320,8 @@ window.__ModuleLoader__.load({
         mic.srcNode.connect(mic.proc);
         mic.proc.connect(audioCtx.destination); // silent pull so onaudioprocess fires
         mic.proc.connect(mic.analyser);
+        mic.hits = 0;
+        mic.lastRms = 0;
         return true;
       }).catch(function (err) {
         setStore({ status: "error", error: micErrorText(err) });
@@ -321,6 +345,8 @@ window.__ModuleLoader__.load({
       mic.silenceMs = 0;
       mic.totalMs = 0;
       mic.rem = 0;
+      mic.hits = 0;
+      mic.lastRms = 0;
     }
 
     // ---- talk / SSE -----------------------------------------------------
@@ -524,6 +550,24 @@ window.__ModuleLoader__.load({
       return h("canvas", { ref: ref, className: "dshvc-wave", width: 320, height: 64 });
     }
 
+    /** Live mic diagnostic: current RMS vs VAD threshold. */
+    function MicMeter() {
+      var tick = react.useState(0)[1];
+      react.useEffect(function () {
+        var id = setInterval(function () { tick(Date.now()); }, 300);
+        return function () { clearInterval(id); };
+      }, []);
+      var rms = mic.lastRms || 0;
+      var hasStream = !!mic.stream;
+      var level = hasStream
+        ? (rms >= SPEECH_RMS ? "说话中" : rms > 0.0005 ? "有信号" : "信号弱")
+        : "无麦克风";
+      var cls = hasStream
+        ? (rms >= SPEECH_RMS ? "dshvc-meter dshvc-meter-hot" : "dshvc-meter")
+        : "dshvc-meter dshvc-meter-dim";
+      return h("div", { className: cls }, "🎤 " + rms.toFixed(4) + " · " + level + " · 阈值 " + SPEECH_RMS);
+    }
+
     function CallOverlay() {
       var s = useStore();
       if (!s.open) return null;
@@ -549,6 +593,7 @@ window.__ModuleLoader__.load({
           h("div", { className: "dshvc-name" }, "大黑鲸"),
           h("div", { className: "dshvc-status" + (s.status === "error" ? " dshvc-status-err" : "") }, statusText),
           h(Wave, {}),
+          h(MicMeter, {}),
           s.error && s.status === "error" ? h("div", { className: "dshvc-error" }, s.error) : null,
           s.lastUser || s.assistant
             ? h(
